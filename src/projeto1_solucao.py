@@ -81,12 +81,15 @@ def get_bin_size_kb(obj):
     return len(pickle.dumps(obj)) / 1e3
 
 
+# *CÓDIGO ELABORADO*
+
 # Questão 1
 
 ## Q1 setup
 from sklearn.datasets import load_sample_image
 import matplotlib.pyplot as plt
 
+# Carrega imagem `china.jpg`
 china = load_sample_image('china.jpg')
 # plt.imshow(china)
 # plt.show()
@@ -106,6 +109,7 @@ def uniform_quant_2(im, n_colors):
     im_qt_rgb  = np.uint8((im_qt_rgb) * bin_size)
 
     # criar os dicionarios ID -> pixel e pixel -> ID
+    # DIVIDE O VALOR RGB PELA METADE NO DICT DE DADOS
     dict_id2pixel = {i: list([v//2 for v in pixel_vals[i]]) for i in range(len(pixel_vals))}
     dict_pixel2id = {pixel_vals[i]: i for i in range(len(pixel_vals))}
 
@@ -117,14 +121,26 @@ def uniform_quant_2(im, n_colors):
     return mat_ids, dict_id2pixel
 
 ## 1b
+# Cria 3 subplots, um para cada imagem da figura f
 f, subf = plt.subplots(3, 1)
+
+# Ecibe imagem original
+subf[0].set_title("Imagem original")
 subf[0].imshow(china)
+
+# Carrega matriz de 'labels' e dicionário de cores
 m2, d2 = uniform_quant(china, 2**6)
+# Cria matriz cópia com cada label transformada em seu valor no dict
 im2 = [[ d2[c] for c in r ] for r in m2]
+subf[0].set_title("Imagem usando a função dada")
 subf[1].imshow(im2)
+
+# Realiza o processo anterior com a função modificada
 m3, d3 = uniform_quant_2(china, 2**6)
 im3 = [[ d3[c] for c in r ] for r in m3]
 subf[2].imshow(im3)
+
+# Exibe imagens
 plt.show()
 
 ## 1c
@@ -139,20 +155,45 @@ print("\tImagem quantizada modificada:", get_bin_size_kb(im3))
 from sklearn.cluster import KMeans
 
 ## 2a
-def kmeansQuant(img: np.uint8, cluster: int = 64):
-    imgArray = np.reshape(china, (-1, 3)) / 255
-    km = KMeans(n_clusters=2**6, random_state=42, max_iter=10, n_init="auto").fit(imgArray)
-    pred = km.predict(imgArray)
-    return np.reshape(km.cluster_centers_[pred], img.shape)
+def kmeansQuant(img: np.uint8, cluster: int = 64) -> np.uint8:
+    """
+    Calcula centróides para o número dado de clusters e aproxima cada
+    pixel da imagem dada para o centróide de seu cluster.
+
+    Parameters:
+    ----------
+    img: np.uint8
+        Imagem carregada como array numpy de uint8
+    cluster: int
+        Número de clusters para cálculo
+
+    Returns:
+    ----------
+    np.uint8
+        Imagem recontruída em seu tamanho original com a aproximação de cada
+        pixel a seu cluster correspondente
+    """
+    # Transforma tamanho e normaliza array de pixels carregado
+    imgArray = np.reshape(img, (-1, 3)) / 255
+    # Treina classificador k-means com parâmetros dados sobre o array gerado
+    km = KMeans(n_clusters=cluster, random_state=42, max_iter=10, n_init="auto").fit(imgArray)
+    # Prediz 'labels' dentre os centróides calculados em todos os pixels da matriz
+    labels = km.predict(imgArray)
+    # Transforma cada pixel no centróide previsto pelo algoritmo e
+    # retoma o tamanho original da imagem
+    return np.reshape(km.cluster_centers_[labels], img.shape)
 
 ## 2b
+#  Cria 3 subplots para as imagens na figura f
 f, subf = plt.subplots(3, 1)
+
 subf[0].set_title("Imagem original")
 subf[0].imshow(china)
 subf[1].set_title("64 cores (k-means)")
 subf[1].imshow(kmeansQuant(china))
 subf[2].set_title("64 cores (quantização uniforme)")
 subf[2].imshow(im2)
+
 plt.show()
 
 # Questão 3
