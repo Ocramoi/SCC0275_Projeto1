@@ -28,7 +28,7 @@ class MyImgFormat:
         self._mat2bytes(mat_rgb_ids)
         
     def _mat2bytes(self, mat):
-        self.pixel_bytes_ = BitStream()
+        self.pixel_bytes_: BitStream = BitStream()
         
         pixel_rgb_ids = mat.reshape(-1)
         for rgb_id in pixel_rgb_ids:
@@ -131,31 +131,34 @@ subf[0].imshow(china)
 # Carrega matriz de 'labels' e dicionário de cores
 m2, d2 = uniform_quant(china, 2**6)
 # Cria matriz cópia com cada label transformada em seu valor no dict
-im2 = [[ d2[c] for c in r ] for r in m2]
+im2: MyImgFormat = MyImgFormat(m2, d2)
 subf[0].set_title("Imagem usando a função dada")
-subf[1].imshow(im2)
+subf[1].imshow(im2.unpack())
 
 # Realiza o processo anterior com a função modificada
 m3, d3 = uniform_quant_2(china, 2**6)
-im3 = [[ d3[c] for c in r ] for r in m3]
-subf[2].imshow(im3)
+im3: MyImgFormat = MyImgFormat(m3, d3)
+subf[2].imshow(im3.unpack())
 
 # Exibe imagens
-plt.show()
+f.show()
 
 ## 1c
 print("Tamanhos das imagens:")
-print("\tImagem original:", get_bin_size_kb(china))
-print("\tImagem quantizada original:", get_bin_size_kb(im2))
-print("\tImagem quantizada modificada:", get_bin_size_kb(im3))
+print("\tImagem original:", get_bin_size_kb(np.array(china)))
+print("\tImagem quantizada original:", get_bin_size_kb(im2.pixel_bytes_.bytes))
+print("\tImagem quantizada modificada:", get_bin_size_kb(im3.pixel_bytes_.bytes))
 
 # Questão 2
 
 ## Q2 setup
 from sklearn.cluster import KMeans
 
+# Import para documentação
+from typing import List, Tuple
+
 ## 2a
-def kmeansQuant(img: np.uint8, cluster: int = 64) -> np.uint8:
+def kmeansQuant(img: np.uint8, cluster: int = 64) -> Tuple[np.uint8, KMeans]:
     """
     Calcula centróides para o número dado de clusters e aproxima cada
     pixel da imagem dada para o centróide de seu cluster.
@@ -172,6 +175,8 @@ def kmeansQuant(img: np.uint8, cluster: int = 64) -> np.uint8:
     np.uint8
         Imagem recontruída em seu tamanho original com a aproximação de cada
         pixel a seu cluster correspondente
+    KMeans
+        Classe do algoritmo com seus hiper parâmetros
     """
     # Transforma tamanho e normaliza array de pixels carregado
     imgArray = np.reshape(img, (-1, 3)) / 255
@@ -181,7 +186,7 @@ def kmeansQuant(img: np.uint8, cluster: int = 64) -> np.uint8:
     labels = km.predict(imgArray)
     # Transforma cada pixel no centróide previsto pelo algoritmo e
     # retoma o tamanho original da imagem
-    return np.reshape(km.cluster_centers_[labels], img.shape)
+    return np.reshape(km.cluster_centers_[labels], img.shape), km
 
 ## 2b
 #  Cria 3 subplots para as imagens na figura f
@@ -190,12 +195,165 @@ f, subf = plt.subplots(3, 1)
 subf[0].set_title("Imagem original")
 subf[0].imshow(china)
 subf[1].set_title("64 cores (k-means)")
-subf[1].imshow(kmeansQuant(china))
+subf[1].imshow(kmeansQuant(china)[0])
 subf[2].set_title("64 cores (quantização uniforme)")
-subf[2].imshow(im2)
+subf[2].imshow(im2.unpack())
 
-plt.show()
+f.show()
 
 # Questão 3
 
-## Q3 setup
+## 3a
+
+# Quantidades de cluster para teste
+nTest = range(2, 64)
+# Lista de inércias computadas
+inertias: List[float] = []
+# Imagem convertida temporária para cálculo
+_china = np.reshape(china, (-1, 3)) / 255
+# Para cada número de clusters
+for i in nTest:
+    # Encontra os hiper parâmetros para os clusters dados
+    km = KMeans(n_clusters=i, random_state=42, max_iter=10, n_init="auto").fit(_china)
+    # Salva a inércia correlata ao número de clusters
+    inertias.append(km.inertia_)
+
+plt.plot(nTest, inertias)
+plt.scatter(nTest, inertias)
+
+plt.xlabel("Número de clusters")
+plt.ylabel("Inércia")
+plt.title("N-Clusters X Inércia")
+
+f.show()
+
+## 3b
+
+# Tomaremos 17 como o número ótimo de cluster pelo 'método do cotovelo'
+chinaQnt = kmeansQuant(china, 17)[0]
+mse = (((china / 255) - chinaQnt)**2).mean()
+print("MSE:", mse)
+
+# Questão 4
+
+## Q4 setup
+
+flower = load_sample_image('flower.jpg')
+
+# Número de cores para cálculo
+quants = [ 8, 27, 64, 125, 216 ]
+
+# Informações de cada uma das imagens
+chinaQuants = {
+    'img': china,
+    'km': {},
+    'unif': {},
+}
+flowerQuants = {
+    'img': flower,
+    'km': {},
+    'unif': {},
+}
+
+
+## 4a
+
+# Para cada imagem
+for imgDict in [ chinaQuants, flowerQuants ]:
+    # Para cada quantidade de cores
+    for q in quants:
+        # Calcula a quantização uniforme e k-means
+        imgDict['km'][q] = kmeansQuant(imgDict['img'], q)
+        imgDict['unif'][q] = MyImgFormat(*uniform_quant(imgDict['img'], q))
+
+## 4b
+
+f, subf = plt.subplots(2, 1)
+f.suptitle("Inércias obtidas")
+
+subf[0].set_title("china.jpg")
+subf[0].plot(quants, [chinaQuants['km'][i][1].inertia_ for i in quants])
+subf[1].set_title("flower.jpg")
+subf[1].plot(quants, [flowerQuants['km'][i][1].inertia_ for i in quants])
+
+f.show()
+
+## 4c
+
+# Cálculos para 'china.jpg'
+f, subf = plt.subplots(2, 1)
+f.suptitle("MSE por número de cores (china.jpg)")
+
+subf[0].set_title("K-means")
+subf[0].plot(
+    quants,
+    [
+        # Calcula o MSE com a imagem gerada com quantização k-means
+        ((np.reshape(chinaQuants['km'][i][0]/255, china.shape) - (china / 255))**2).mean()
+        for i in quants
+    ]
+)
+subf[1].set_title("Uniform")
+subf[1].plot(
+    quants,
+    [
+        # Calcula o MSE com a imagem gerada com quantização uniforme
+        ((np.reshape(np.array(chinaQuants['unif'][i].unpack())/255, china.shape) - chinaQnt)**2).mean()
+        for i in quants
+    ]
+)
+
+f.show()
+
+# Realiza o mesmo processo para 'flower.jpg'
+f, subf = plt.subplots(2, 1)
+f.suptitle("MSE por número de cores (flower.jpg)")
+
+subf[0].set_title("K-means")
+subf[0].plot(
+    quants,
+    [
+        ((np.reshape(flowerQuants['km'][i][0]/255, flower.shape) - (flower / 255))**2).mean()
+        for i in quants
+    ]
+)
+subf[1].set_title("Uniform")
+subf[1].plot(
+    quants,
+    [
+        ((np.reshape(np.array(flowerQuants['unif'][i].unpack())/255, flower.shape) - (flower / 255))**2).mean()
+        for i in quants
+    ]
+)
+
+f.show()
+
+## 4d
+
+f, subf = plt.subplots(2, 1)
+f.suptitle("Tamanho das imagens em KBs\n[0 = imagem original]")
+
+subf[0].set_title("china.jpg")
+subf[0].plot(
+    [0, *quants],
+    [
+        get_bin_size_kb(np.array(china)),
+        *[
+            get_bin_size_kb(chinaQuants['unif'][i].pixel_bytes_.bytes)
+            for i in quants
+        ]
+    ]
+)
+subf[1].set_title("flower.jpg")
+subf[1].plot(
+    [0, *quants],
+    [
+        get_bin_size_kb(np.array(flower)),
+        *[
+            get_bin_size_kb(flowerQuants['unif'][i].pixel_bytes_.bytes)
+            for i in quants
+        ]
+    ]
+)
+
+f.show()
